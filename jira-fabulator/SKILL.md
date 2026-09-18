@@ -40,7 +40,7 @@ For CDFailure issues, CI/CD job output can support the reproduction and logs cat
 
 ## Labels
 
-Use these exact labels:
+After analysis, you *must* set one of the following labels:
 
 - `ready-for-work`: all required categories are present
 - `needs-information`: one or more required categories are missing
