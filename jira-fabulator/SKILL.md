@@ -53,34 +53,34 @@ Re-read the issue immediately before mutation and skip it if it is no longer unr
 
 ## Missing-Information Comment Template
 
-For an incomplete issue, render this Markdown template. Include issue type and Priority in the provided table when Jira supplies them. Include every required category in the provided table when it has present, partial, or implied evidence; do not list absent fields there. A category may appear in both tables when evidence is implied but unconfirmed, especially Environment. Include rows in the missing table only for unmet required categories.
+For an incomplete issue, render this Markdown template. Include issue type and Priority in the provided section when Jira supplies them. Include every required category in the provided section when it has present, partial, or implied evidence; omit absent fields. A category may appear in both sections when evidence is implied but unconfirmed, especially Environment. Include items in the missing section only for unmet required categories.
 
 ```markdown
 Ticket readiness assessment: more information is needed.
 
 ✅ What's been provided
-| Field | Detail |
-|---|---|
 {{#each provided_information}}
-| {{name}} | {{evidence_detail}} |
+- {{name}}: {{evidence_detail}}
 {{/each}}
 
 ❌ What's missing
-| Category | Problem |
-|---|---|
 {{#each missing_required_information}}
-| {{name}} | {{missing_detail}} |
+- {{name}}: {{missing_detail}}
 {{/each}}
+
+{{#if additional_comments}}
+Additional comments: {{additional_comments}}
+{{/if}}
 
 [jira-ticket-readiness]
 ```
 
-For `provided_information`, render evidence-derived details that distinguish explicit, implied, partial, attached, linked, or other applicable status and cite the useful evidence. For `missing_required_information`, render the category's evidence-specific `missing_detail`, including what was checked and why it was insufficient. Do not use generic fixed prompts or invent evidence.
+For `provided_information`, render evidence-derived details that distinguish explicit, implied, partial, attached, linked, or other applicable status and cite the useful evidence. For `missing_required_information`, render the category's evidence-specific `missing_detail`, including what was checked and why it was insufficient. Optionally set `additional_comments` to one or two concise sentences when useful ticket-specific context does not fit either list; omit the field and its heading when there is nothing material to add. Do not repeat list content, use generic filler, or invent evidence.
 
 Before commenting, inspect existing comments containing `[jira-ticket-readiness]`:
 
-- Compare the current missing category set and normalized evidence-derived details against the newest marker comment.
-- If both the category set and normalized evidence-derived details are equivalent, do not add another comment.
+- Compare the current missing category set, normalized evidence-derived details, and any material additional comments against the newest marker comment.
+- If the category set, normalized evidence-derived details, and material additional comments are equivalent, do not add another comment.
 - If categories or material evidence/details changed, add a new comment with the current assessment.
 - Never edit or delete earlier comments.
 - Never comment on a ready issue.
