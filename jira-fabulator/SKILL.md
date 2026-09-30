@@ -70,7 +70,6 @@ Render one bullet per missing category and no bullets for categories that are pr
 
 Before commenting, inspect existing comments containing `[jira-ticket-readiness]`:
 
-- If the newest such comment lists the same missing categories, do not add another comment.
 - If the missing categories changed, add a new comment with the current list.
 - Never edit or delete earlier comments.
 - Never comment on a ready issue.
