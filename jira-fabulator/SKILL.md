@@ -6,24 +6,41 @@ compatibility: Requires the shared Atlassian MCP server to be enabled and authen
 
 # Jira Ticket Readiness
 
-Assess exactly one Jira ticket supplied by the caller against the template below. Read evidence from the summary, description, labels, attachments, and all existing comments. Automatically update the assessed issue; do not ask for confirmation.
+Assess exactly one Jira ticket supplied by the caller against the template below. Read all named evidence sources, classify every category, automatically update the assessed issue, and do not ask for confirmation.
 
 ## Scope
 
 The caller or cron job must supply exactly one Jira issue key. If zero keys or more than one key are supplied, stop and request exactly one Jira issue key. If the user explicitly asks for a dry run, perform the assessment but make no Jira changes.
 
+## Evidence model
+
+Classify each required category in exactly one state:
+
+- **confirmed/provided**: explicit, internally consistent evidence; satisfies the requirement.
+- **inferred/ambiguous (amber)**: a plausible value inferred from one or more named sources, but not explicit or conflicting; does not satisfy the requirement and requires clarification.
+- **missing**: no credible evidence; does not satisfy the requirement.
+
+A ticket is ready only when every required category is confirmed/provided. Any amber or missing category requires `needs-information`.
+
+Retrieve and inspect these Jira fields as evidence sources: **Environment**, **labels**, **summary**, **Customer**, and **Detected in**. Also inspect the description, attachments, and all comments. Customer and Detected in may be custom fields with instance-specific IDs: discover and read them by display name from Jira field metadata; never guess field IDs.
+
+Use the sources to infer candidate Environment, Lab, and Customer values, without turning inference into fact. Environment names may occur in summary, labels, Environment, or Detected in; lab names or identifiers may occur in summary, labels, Environment, or Detected in; customer names may occur in Customer, summary, labels, description, or comments. For every inference, cite the exact signal and source. Do not infer from unrelated tokens. If evidence conflicts, list each candidate and its source without choosing.
+
 ## Required Information Template
 
-Use each entry in this template as one required category. `missing_detail` is an instruction/template for an evidence-specific explanation, not a generic request:
+Use each entry as one required category. `missing_detail` is an evidence-specific explanation, not a generic request:
 
 ```yaml
 required_information:
   - name: Environment
-    requirement: An explicit deployment environment where the problem occurs, such as Production, Staging, or Development. An environment implied only by the title or summary may be recorded as provided/implied, but remains missing until the caller confirms it explicitly.
-    missing_detail: Explain which sources were checked and that the environment was only implied, absent, or otherwise insufficient; request explicit confirmation of the environment.
+    requirement: An explicit deployment environment where the problem occurs, such as Production, Staging, or Development. A plausible environment inferred from summary, labels, Environment, or Detected in may be shown amber, but never satisfies readiness.
+    missing_detail: Cite the checked sources and exact signal, explain whether the environment is missing, ambiguous, conflicting, or only inferred, and request explicit confirmation.
   - name: Lab
-    requirement: An explicit lab where the problem occurs, or an explicit statement that no lab is involved or applicable.
-    missing_detail: Cite the checked evidence and explain whether the lab is absent, ambiguous, or not explicitly declared; request the lab or an explicit not-applicable statement.
+    requirement: An explicit lab where the problem occurs, or an explicit statement that no lab is involved or applicable. A plausible lab inferred from summary, labels, Environment, or Detected in may be shown amber, but never satisfies readiness.
+    missing_detail: Cite the checked sources and exact signal, explain whether the lab is missing, ambiguous, conflicting, or only inferred, and request the lab or an explicit not-applicable statement.
+  - name: Customer
+    requirement: An explicit Customer field/value, or an explicit statement in ticket content identifying the customer or saying none/not applicable. An inferred customer is amber and incomplete.
+    missing_detail: Cite the checked Customer field, summary, labels, description, and comments, explain whether the customer is absent, ambiguous, conflicting, or only inferred, and request an explicit customer or none/not-applicable statement.
   - name: Description & Reproduction
     requirement: An actionable problem description and reproduction information that assesses the problem description, steps to reproduce, expected versus actual behavior, affected service or feature, relevant API calls, dataset, and configuration changes where applicable. Mentioning an action without describing how it was performed is insufficient. A Bruno or Postman script is optional.
     missing_detail: Identify the specific part(s) checked that are absent or non-actionable, explain why the available description cannot support assessment or reproduction, and request only the missing evidence.
@@ -32,41 +49,46 @@ required_information:
     missing_detail: Cite the checked attachments, links, comments, or pasted content and explain why no DEBUG logs or credible unavailability explanation was sufficient; request the missing evidence or explanation.
 ```
 
-An issue is ready only when every template entry has usable, issue-specific evidence. The template may be replaced or extended by configuration supplied with the assessment; when that occurs, evaluate and comment from the supplied entries using the same `name`, `requirement`, and `missing_detail` fields. Issue type and Priority are informational fields for the provided section; they are not readiness requirements.
-
-Accept information wherever it appears in the summary, description, labels, attachments, or comments. Combine partial evidence across those sources. Do not require exact headings or template wording. Do not infer facts that are not stated, treat a component name as an environment or lab, or treat ordinary error text as DEBUG-level logs. Record whether evidence is explicit, implied, partial, attached, linked, or otherwise qualified. Every missing detail must cite what was checked and why the evidence is insufficient; never invent evidence.
-
-For CDFailure issues, CI/CD job output can support the reproduction and logs categories, but it must identify the failing operation and contain DEBUG-level detail or explicitly explain why DEBUG output is unavailable.
+The template may be replaced or extended by configuration supplied with the assessment; evaluate supplied entries using the same `name`, `requirement`, and `missing_detail` fields. Issue type and Priority are informational confirmed values when present, not readiness requirements. Combine explicit evidence across sources, but never promote partial or implied evidence to confirmed/provided. Do not require exact headings or template wording, treat a component name as an environment or lab, or treat ordinary error text as DEBUG-level logs. For CDFailure issues, CI/CD job output can support reproduction and logs when it identifies the failing operation and contains DEBUG-level detail or explicitly explains why DEBUG output is unavailable.
 
 ## Labels
 
 Use these exact labels:
 
-- `ready-for-work`: all required categories are present
-- `needs-information`: one or more required categories are missing
+- `ready-for-work`: all required categories are confirmed/provided
+- `needs-information`: one or more required categories are amber or missing
 
-The analyzed issue must have an assessment label when processing completes: `ready-for-work` when ready or `needs-information` when incomplete. Add the applicable label if it is absent, even when the issue already has other labels.
+The analyzed issue must have the applicable assessment label when processing completes. Preserve all existing labels without exception except when an issue previously labelled `needs-information` is now ready: remove only `needs-information` and add `ready-for-work`. Never remove, replace, rename, or overwrite any other label.
 
-Preserve all existing labels without exception except when an issue previously labelled `needs-information` is now ready. In that one case, remove only `needs-information` and add `ready-for-work`. Never remove, replace, rename, or overwrite any other label. In particular, assessing an incomplete issue must only add `needs-information`; it must not remove any existing label.
-
-Re-read the issue immediately before mutation and skip it if it is no longer unresolved or now has `ready-for-work`, preventing stale search results from overwriting concurrent updates. A skipped issue with `ready-for-work` already satisfies the requirement that the assessed ticket carry an assessment label.
+Re-read the issue immediately before mutation and skip it if it is no longer unresolved or now has `ready-for-work`, preventing stale search results from overwriting concurrent updates.
 
 ## Missing-Information Comment Template
 
-For an incomplete issue, render this Markdown template. Include issue type and Priority in the provided section when Jira supplies them. Include every required category in the provided section when it has present, partial, or implied evidence; omit absent fields. A category may appear in both sections when evidence is implied but unconfirmed, especially Environment. Include items in the missing section only for unmet required categories.
+For an incomplete issue, render this Markdown template. Omit every empty section. A category must appear in exactly one of the three state sections. Include Issue type and Priority in confirmed information when Jira supplies them.
 
 ```markdown
 Ticket readiness assessment: more information is needed.
 
+{{#if confirmed_information}}
 ✅ What's been provided
-{{#each provided_information}}
+{{#each confirmed_information}}
 - {{name}}: {{evidence_detail}}
 {{/each}}
+{{/if}}
 
+{{#if inferred_information}}
+🟠 What's inferred — please confirm
+{{#each inferred_information}}
+- {{name}}: Candidate: {{inferred_value}}; evidence: {{evidence_source}}; please confirm: {{clarification_needed}}
+{{/each}}
+{{/if}}
+
+{{#if missing_required_information}}
 ❌ What's missing
 {{#each missing_required_information}}
 - {{name}}: {{missing_detail}}
 {{/each}}
+{{/if}}
 
 {{#if additional_comments}}
 Additional comments: {{additional_comments}}
@@ -75,11 +97,11 @@ Additional comments: {{additional_comments}}
 [jira-ticket-readiness]
 ```
 
-For `provided_information`, render evidence-derived details that distinguish explicit, implied, partial, attached, linked, or other applicable status and cite the useful evidence. For `missing_required_information`, render the category's evidence-specific `missing_detail`, including what was checked and why it was insufficient. Optionally set `additional_comments` to one or two concise sentences when useful ticket-specific context does not fit either list; omit the field and its heading when there is nothing material to add. Do not repeat list content, use generic filler, or invent evidence.
+`inferred_information` entries must include `name`, `inferred_value`, `evidence_source`, and `clarification_needed`; clearly state the candidate, exact source/signal, and requested confirmation. Conflicting evidence must show candidates and sources without choosing. `missing_required_information` must cite what was checked and why it was insufficient. Never invent evidence, repeat list content, or use generic filler.
 
 ## Ready Confirmation Comment Template
 
-For a ticket that satisfies every required category, after the `ready-for-work` label update has been verified, render this brief comment:
+For a ticket with every required category confirmed/provided, after the `ready-for-work` label update has been verified, render:
 
 ```markdown
 ✅ This ticket has the information needed and is ready for work. Thanks for providing the required detail.
@@ -87,25 +109,19 @@ For a ticket that satisfies every required category, after the `ready-for-work` 
 [jira-ticket-readiness]
 ```
 
-Inspect existing comments containing `[jira-ticket-readiness]` before posting. If an equivalent ready confirmation already exists, do not post another. An older missing-information marker comment does not count as an equivalent ready confirmation; when transitioning from `needs-information` to ready, post this confirmation once after label verification.
+## Idempotency
 
-Before commenting, inspect existing comments containing `[jira-ticket-readiness]`:
-
-- Compare the current missing category set, normalized evidence-derived details, and any material additional comments against the newest marker comment.
-- If the category set, normalized evidence-derived details, and material additional comments are equivalent, do not add another comment.
-- If categories or material evidence/details changed, add a new comment with the current assessment.
-- Never edit or delete earlier comments.
-- Do not post missing-information comments for a ready issue; a ready issue may receive the one ready confirmation described below.
+Inspect existing comments containing `[jira-ticket-readiness]` before posting. Compare the state/category sets, normalized confirmed evidence details, normalized inferences (including candidate values, exact sources/signals, and clarification requests), and material additional comments against the newest marker comment. Equivalent data means no duplicate comment; any category/state change or materially changed evidence or inference produces a new assessment comment. Never edit or delete earlier comments. Do not post an incomplete comment for a ready issue; an older incomplete marker does not count as the ready confirmation.
 
 ## Workflow
 
-1. Verify that Atlassian MCP tools are available. If they are unavailable or unauthenticated, stop without changing the ticket and explain that the shared `atlassian` MCP connection must be enabled, authenticated, and followed by an OpenCode restart.
-2. Resolve the accessible Jira cloud/site and retrieve the one issue supplied by the caller.
-3. Retrieve the full summary, description, issue type, Priority, labels, attachments, and comments for that issue.
-4. Record provided evidence and a missing reason for each required category, using only evidence found in the issue. Render the comment template if any required category is incomplete.
-5. Re-read the issue and perform the idempotency and concurrency checks, including comparison of the current missing category set and normalized evidence-derived details with the newest readiness comment. For a ready ticket, also inspect marker comments for an equivalent ready confirmation.
-6. If ready, add `ready-for-work`. If and only if `needs-information` is already present, remove that label while preserving every other label. Re-read the issue and verify that `ready-for-work` is present; if the mutation fails or verification does not show it, do not post a ready confirmation. After successful verification, post the ready confirmation template unless an equivalent ready confirmation marker already exists.
-7. If incomplete, add `needs-information` if absent, preserve every existing label, and render the missing-information comment only when its current category set or material evidence/details are not already represented by the newest readiness comment. Do not post a missing-information comment for a ready issue.
+1. Verify Atlassian MCP tools are available and authenticated; otherwise stop without changing the ticket and explain that the shared `atlassian` MCP connection must be enabled, authenticated, and followed by an OpenCode restart.
+2. Resolve the accessible Jira cloud/site and retrieve exactly one issue supplied by the caller.
+3. Retrieve full summary, description, issue type, Priority, labels, attachments, comments, and the Environment, Customer, and Detected in fields discovered by display name from Jira field metadata.
+4. Classify every required category as confirmed/provided, inferred/ambiguous, or missing. Record exact evidence sources/signals, candidates and conflicts, and evidence-specific missing or clarification instructions. Render the incomplete template when any category is amber or missing.
+5. Re-read the issue immediately before mutation; perform concurrency and idempotency checks using state/category sets, normalized evidence details/inferences, and additional comments.
+6. If all required categories are confirmed, add `ready-for-work`; only if `needs-information` is present, remove that label while preserving every other label. Verify `ready-for-work` before posting the ready confirmation, unless an equivalent ready marker already exists.
+7. If incomplete, add `needs-information` if absent, preserve every existing label, and post the current three-state assessment only when it is not already represented by the newest marker comment. Never post it for a ready issue.
 
-Prefer additive label operations. Never replace the complete labels array unless the Atlassian tool requires it; if it does, construct the update from the freshly read array, preserve every value, add the applicable assessment label, and remove only `needs-information` when changing that assessment to `ready-for-work`. Verify the resulting labels after mutation; if the applicable assessment label is absent, treat the issue as failed.
+Prefer additive label operations. If the Atlassian tool requires replacing the labels array, construct it from the freshly read array, preserve every value, add the applicable assessment label, and remove only `needs-information` when changing to `ready-for-work`. Verify the resulting labels; if the applicable assessment label is absent, treat the issue as failed.
 
