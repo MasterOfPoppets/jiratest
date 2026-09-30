@@ -77,13 +77,25 @@ Additional comments: {{additional_comments}}
 
 For `provided_information`, render evidence-derived details that distinguish explicit, implied, partial, attached, linked, or other applicable status and cite the useful evidence. For `missing_required_information`, render the category's evidence-specific `missing_detail`, including what was checked and why it was insufficient. Optionally set `additional_comments` to one or two concise sentences when useful ticket-specific context does not fit either list; omit the field and its heading when there is nothing material to add. Do not repeat list content, use generic filler, or invent evidence.
 
+## Ready Confirmation Comment Template
+
+For a ticket that satisfies every required category, after the `ready-for-work` label update has been verified, render this brief comment:
+
+```markdown
+✅ This ticket has the information needed and is ready for work. Thanks for providing the required detail.
+
+[jira-ticket-readiness]
+```
+
+Inspect existing comments containing `[jira-ticket-readiness]` before posting. If an equivalent ready confirmation already exists, do not post another. An older missing-information marker comment does not count as an equivalent ready confirmation; when transitioning from `needs-information` to ready, post this confirmation once after label verification.
+
 Before commenting, inspect existing comments containing `[jira-ticket-readiness]`:
 
 - Compare the current missing category set, normalized evidence-derived details, and any material additional comments against the newest marker comment.
 - If the category set, normalized evidence-derived details, and material additional comments are equivalent, do not add another comment.
 - If categories or material evidence/details changed, add a new comment with the current assessment.
 - Never edit or delete earlier comments.
-- Never comment on a ready issue.
+- Do not post missing-information comments for a ready issue; a ready issue may receive the one ready confirmation described below.
 
 ## Workflow
 
@@ -91,9 +103,9 @@ Before commenting, inspect existing comments containing `[jira-ticket-readiness]
 2. Resolve the accessible Jira cloud/site and retrieve the one issue supplied by the caller.
 3. Retrieve the full summary, description, issue type, Priority, labels, attachments, and comments for that issue.
 4. Record provided evidence and a missing reason for each required category, using only evidence found in the issue. Render the comment template if any required category is incomplete.
-5. Re-read the issue and perform the idempotency and concurrency checks, including comparison of the current missing category set and normalized evidence-derived details with the newest readiness comment.
-6. If ready, add `ready-for-work`. If and only if `needs-information` is already present, remove that label while preserving every other label.
-7. If incomplete, add `needs-information` if absent, preserve every existing label, and render the comment only when its current category set or material evidence/details are not already represented by the newest readiness comment.
+5. Re-read the issue and perform the idempotency and concurrency checks, including comparison of the current missing category set and normalized evidence-derived details with the newest readiness comment. For a ready ticket, also inspect marker comments for an equivalent ready confirmation.
+6. If ready, add `ready-for-work`. If and only if `needs-information` is already present, remove that label while preserving every other label. Re-read the issue and verify that `ready-for-work` is present; if the mutation fails or verification does not show it, do not post a ready confirmation. After successful verification, post the ready confirmation template unless an equivalent ready confirmation marker already exists.
+7. If incomplete, add `needs-information` if absent, preserve every existing label, and render the missing-information comment only when its current category set or material evidence/details are not already represented by the newest readiness comment. Do not post a missing-information comment for a ready issue.
 
 Prefer additive label operations. Never replace the complete labels array unless the Atlassian tool requires it; if it does, construct the update from the freshly read array, preserve every value, add the applicable assessment label, and remove only `needs-information` when changing that assessment to `ready-for-work`. Verify the resulting labels after mutation; if the applicable assessment label is absent, treat the issue as failed.
 
