@@ -1,38 +1,38 @@
 ---
 name: jira-ticket-readiness
-description: Use when the user wants to assess, triage, or check OPF Jira Bug and CDFailure tickets for required diagnostic information, then label ready tickets or comment on missing information. Uses the Atlassian MCP server and the fixed OPF component JQL. Keywords: Jira readiness, ticket quality, missing information, ready-for-work, needs-information, OPF bugs, CDFailure.
-compatibility: Requires the shared Atlassian MCP server to be enabled and authenticated with permission to read, comment on, and edit OPF Jira issues.
+description: Assesses one Jira ticket for required diagnostic information, applies a readiness label, and comments on missing information. Use when triaging a Jira ticket, OPF bug, CDFailure issue, or ticket supplied by an automated job.
+compatibility: Requires the shared Atlassian MCP server to be enabled and authenticated with permission to read, comment on, and edit an OPF Jira issue.
 ---
 
 # Jira Ticket Readiness
 
-Assess unresolved OPF Bug and CDFailure tickets against the checklist below. Read evidence from the summary, description, labels, attachments, and all existing comments. Automatically update each assessed issue; do not ask for confirmation.
+Assess the Jira ticket supplied by the caller against the template below. Read evidence from its summary, description, labels, attachments, and all existing comments. Automatically update the ticket; do not ask for confirmation.
 
 ## Scope
 
-Use this JQL exactly, including the readiness-label exclusion:
+The caller or cron job supplies exactly one Jira issue key. If no issue key or more than one issue key is supplied, stop and request exactly one. If the user explicitly asks for a dry run, perform the same assessment but make no Jira changes.
 
-```jql
-project = 'OPF'
-AND component IN ("Cast Crew and Persona Service (CCP)", CIM-GO, "Content Builder", "Content Discovery Façade", "Content Delivery", "Content Discovery Gateway (CDG)", "Content Discovery Service  (CDS)", "Image Handler(IHS) (IHS)", "Image Service Lambda", "Image Metadata Server", "Metadata Server (MDS)", "Metadata Server Ingester", "Metamorph ", "Metamorph API", "OPUI Rails", "Recommendation Engine eXporter (REX)", "Recommendations Facade", "Search Façade", "Validation Service")
-AND status NOT IN (Closed, Verified, Resolved)
-AND resolution = Unresolved
-AND type IN (Bug, CDFailure)
-AND (labels IS EMPTY OR labels != "ready-for-work")
+## Required Information Template
+
+Use each entry in this template as one required category:
+
+```yaml
+required_information:
+  - name: Environment
+    requirement: The deployment environment where the problem occurs, such as Production, Staging, or Development.
+    missing_prompt: Identify where the issue occurs, for example Production or Staging.
+  - name: Lab
+    requirement: The lab where the problem occurs, or an explicit statement that no lab is involved or applicable.
+    missing_prompt: Identify the affected lab, or state that no lab applies.
+  - name: Description and reproduction
+    requirement: A useful problem description and reproducible steps, including relevant API calls, dataset details, and configuration changes when they apply. Explicit statements that an item is unchanged, unavailable, or not applicable count when reasonable. A Bruno or Postman script is helpful but not required.
+    missing_prompt: Provide the problem details and reproducible steps, including relevant API calls, dataset, and configuration changes.
+  - name: DEBUG logs
+    requirement: DEBUG-level logs provided as text, attachment, or accessible link. An explicit, credible explanation that DEBUG logs cannot be obtained counts; a vague statement such as "see logs" does not.
+    missing_prompt: Attach, link, or paste DEBUG-level logs, or explain why they cannot be obtained.
 ```
 
-The explicit empty-label condition is required because `labels != "ready-for-work"` alone can omit issues with no labels.
-
-Process every result, following pagination until no results remain. If the user explicitly asks for a dry run, perform the same assessment but make no Jira changes.
-
-## Required Information
-
-An issue is ready only when all four categories have usable, issue-specific evidence:
-
-1. **Environment**: The deployment environment where the problem occurs, such as Production, Staging, or Development.
-2. **Lab**: The lab where the problem occurs, or an explicit statement that no lab is involved or applicable.
-3. **Description and reproduction**: A useful problem description and reproducible steps. Include relevant API calls, dataset details, and configuration changes when they apply. Explicit statements that a particular item is unchanged, unavailable, or not applicable count when reasonable. A Bruno or Postman script is helpful but not required.
-4. **DEBUG logs**: DEBUG-level logs provided as text, attachment, or accessible link. An explicit, credible explanation that DEBUG logs cannot be obtained counts; a vague statement such as "see logs" does not.
+An issue is ready only when every template entry has usable, issue-specific evidence. The template may be replaced or extended by configuration supplied with the assessment; when that occurs, evaluate and comment from the supplied entries using the same `name`, `requirement`, and `missing_prompt` fields.
 
 Accept information wherever it appears in the summary, description, labels, attachments, or comments. Combine partial evidence across those sources. Do not require exact headings or template wording. Do not infer facts that are not stated, treat a component name as an environment or lab, or treat ordinary error text as DEBUG-level logs.
 
@@ -40,32 +40,33 @@ For CDFailure issues, CI/CD job output can support the reproduction and logs cat
 
 ## Labels
 
-After analysis, you *must* set one of the following labels:
+Use these exact labels:
 
 - `ready-for-work`: all required categories are present
 - `needs-information`: one or more required categories are missing
 
-The labels are mutually exclusive. A ready issue must have `ready-for-work` and must not have `needs-information`. An incomplete issue must have `needs-information` and must not have `ready-for-work`.
+The analyzed issue must have an assessment label when processing completes: `ready-for-work` when ready or `needs-information` when incomplete. Add the applicable label if it is absent, even when the issue already has other labels.
 
-Preserve every unrelated existing label. Re-read the issue immediately before mutation and skip it if it is no longer unresolved or now has `ready-for-work`, preventing stale search results from overwriting concurrent updates.
+Preserve all existing labels without exception except when an issue previously labelled `needs-information` is now ready. In that one case, remove only `needs-information` and add `ready-for-work`. Never remove, replace, rename, or overwrite any other label. In particular, assessing an incomplete issue must only add `needs-information`; it must not remove any existing label.
 
-## Missing-Information Comment
+Re-read the issue immediately before mutation and skip it if it is no longer unresolved or now has `ready-for-work`, preventing stale search results from overwriting concurrent updates. A skipped issue with `ready-for-work` already satisfies the requirement that analyzed tickets carry an assessment label.
 
-For an incomplete issue, add one concise comment containing only the missing categories and the standard marker shown below:
+## Missing-Information Comment Template
+
+For an incomplete issue, render a comment from the missing required-information entries:
 
 ```text
 Ticket readiness assessment: more information is needed.
 
 Please add:
-- Environment: identify where the issue occurs (for example, Production or Staging).
-- Lab: identify the affected lab, or state that no lab applies.
-- Description and reproduction: provide the problem details and reproducible steps, including relevant API calls, dataset, and configuration changes.
-- DEBUG logs: attach, link, or paste DEBUG-level logs, or explain why they cannot be obtained.
+{{#each missing_required_information}}
+- {{name}}: {{missing_prompt}}
+{{/each}}
 
 [jira-ticket-readiness]
 ```
 
-Include only bullets for categories actually missing. Keep the bullet wording above unchanged so repeated runs are deterministic.
+Render one bullet per missing category and no bullets for categories that are present. Preserve the configured `name` and `missing_prompt` text so repeated runs are deterministic.
 
 Before commenting, inspect existing comments containing `[jira-ticket-readiness]`:
 
@@ -77,26 +78,13 @@ Before commenting, inspect existing comments containing `[jira-ticket-readiness]
 ## Workflow
 
 1. Verify that Atlassian MCP tools are available. If they are unavailable or unauthenticated, stop without changing tickets and explain that the shared `atlassian` MCP connection must be enabled, authenticated, and followed by an OpenCode restart.
-2. Resolve the accessible Jira cloud/site, then run the fixed JQL and retrieve every page.
-3. For each issue, retrieve the full summary, description, labels, attachments, and comments rather than assessing search-result snippets.
+2. Resolve the accessible Jira cloud/site and retrieve the issue supplied by the caller.
+3. Retrieve the issue's full summary, description, labels, attachments, and comments.
 4. Record each category as present or missing with the exact evidence used. Keep this reasoning internal unless the user requests a dry run or detailed report.
 5. Re-read the issue and perform the idempotency and concurrency checks.
-6. If ready, add `ready-for-work` and remove `needs-information` in the smallest supported update.
-7. If incomplete, add `needs-information`, remove `ready-for-work`, and add the standardized comment only when its current missing-category set is not already represented by the newest readiness comment.
-8. Continue after an individual issue fails, recording the error without retrying a mutation whose outcome is uncertain.
+6. If ready, add `ready-for-work`. If and only if `needs-information` is already present, remove that label while preserving every other label.
+7. If incomplete, add `needs-information` if absent, preserve every existing label, and render the comment template only when its current missing-category set is not already represented by the newest readiness comment.
+8. If the assessment fails, report the error without retrying a mutation whose outcome is uncertain.
 
-Prefer one label update per issue. Never replace the complete labels array unless the Atlassian tool requires it; if it does, use the freshly read array and alter only the two readiness labels.
+Prefer additive label operations. Never replace the complete labels array unless the Atlassian tool requires it; if it does, construct the update from the freshly read array, preserve every value, add the applicable assessment label, and remove only `needs-information` when changing that assessment to `ready-for-work`. Verify the resulting labels after mutation; if the applicable assessment label is absent, treat the issue as failed.
 
-## Result
-
-Return a concise summary:
-
-```text
-Assessed: <count>
-Ready: <count>
-Needs information: <count>
-Unchanged: <count>
-Failed: <count>
-```
-
-List issue keys under Ready, Needs information, and Failed. For failures, include the Jira error without exposing credentials or private authentication details.
